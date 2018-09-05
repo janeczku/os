@@ -1019,7 +1019,7 @@ func installRancher(baseName, VERSION, DIST, kappend string) (string, error) {
 	}
 
 	// the general INCLUDE syslinuxcfg
-	isolinuxFile := filepath.Join(DIST, "isolinux", "isolinux.cfg")
+	isolinuxFile := filepath.Join(DIST, "isolinux", "isolinux.cfg.install")
 	syslinuxDir := filepath.Join(baseName, install.BootDir, "syslinux")
 	if err := dfs.CopyFileOverwrite(isolinuxFile, syslinuxDir, "syslinux.cfg", true); err != nil {
 		log.Errorf("copy global syslinux.cfgS%s: %s", "syslinux.cfg", err)
