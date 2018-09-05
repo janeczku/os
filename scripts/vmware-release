@@ -9,12 +9,23 @@ source ./scripts/version
 ./scripts/release
 
 ISO_NAME="rancheros-vmware.iso"
+CHECKSUM=vmware-iso-checksums.txt
 
 mkdir -p /tmp/dist && mv ./dist/* /tmp/dist/
 mkdir -p ./dist/vmware && mv /tmp/dist/* ./dist/vmware/
 mkdir -p ./dist/artifacts && cp ./dist/vmware/artifacts/rancheros.iso ./dist/artifacts/${ISO_NAME}
 
+# TODO: Include vmware ISO checksums in checksums.txt or iso-checksums.txt instead
+pushd .
+cd ./dist/artifacts
+for algo in sha256 md5; do
+    echo "$algo: $(${algo}sum ${ISO_NAME})" >> $CHECKSUM
+done
+popd
+
 echo "github-release upload  --user rancher --repo os --tag ${VERSION} --file ./dist/artifacts/${ISO_NAME} --name ${ISO_NAME}" > ./dist/publish.sh
+echo "github-release upload  --user rancher --repo os --tag ${VERSION} --file ./dist/artifacts/${CHECKSUM} --name ${CHECKSUM}" >> ./dist/publish.sh
+
 echo "gsutil cp dist/artifacts/${ISO_NAME} gs://releases.rancher.com/os/latest/${ISO_NAME}" > ./dist/publish_gss_latest.sh
 echo "gsutil cp dist/artifacts/${ISO_NAME} gs://releases.rancher.com/os/${VERSION}/${ISO_NAME}" > ./dist/publish_gss_${VERSION}.sh
 chmod 755 ./dist/*.sh
