@@ -72,7 +72,7 @@ func Main() {
 	// the network with any new configuration from an online datasource.
 	cfg := rancherConfig.LoadConfig()
 	log.Debugf("Network config (post save-cc): %#v", cfg.Rancher.Network)
-	network.ApplyNetworkConfig(cfg)
+	// network.ApplyNetworkConfig(cfg)
 }
 
 func saveCloudConfig() error {
@@ -90,26 +90,30 @@ func saveCloudConfig() error {
 		return fmt.Errorf("Failed to initialize datasource(s): %#v", cfg.Rancher.CloudInit.Datasources)
 	}
 
-	// Offline datasources
-	log.Debug("Considering offline datasources")
-	if foundDs, ok := selectDatasource(dss, false); ok {
-		log.Infof("Used offline datasource: %s", foundDs)
-		return nil
+	offline, online := containsOfflineOnlineSources(dss)
+
+	if offline {
+		log.Debug("Considering offline datasources")
+		if foundDs, ok := selectDatasource(dss, false); ok {
+			log.Infof("Used offline datasource: %s", foundDs)
+			return nil
+		}
 	}
 
-	// Apply initial network config for datasources that require the net
-	cfg = rancherConfig.LoadConfig()
-	log.Debugf("Network config (pre save-cc-online): %#v", cfg.Rancher.Network)
-	network.ApplyNetworkConfig(cfg)
+	if online {
+		// Bring up the network
+		cfg = rancherConfig.LoadConfig()
+		log.Debugf("Network config (pre save-cc-online): %#v", cfg.Rancher.Network)
+		network.ApplyNetworkConfig(cfg)
 
-	// Online datasources
-	log.Debug("Considering online datasources")
-	if foundDs, ok := selectDatasource(dss, true); ok {
-		log.Infof("Used online datasource: %s", foundDs)
-		return nil
+		log.Debug("Considering online datasources")
+		if foundDs, ok := selectDatasource(dss, true); ok {
+			log.Infof("Used online datasource: %s", foundDs)
+			return nil
+		}
 	}
 
-	return fmt.Errorf("Failed to fetch any of the datasource(s): %#v", cfg.Rancher.CloudInit.Datasources)
+	return fmt.Errorf("None of the configured datasource available: %#v", cfg.Rancher.CloudInit.Datasources)
 }
 
 func saveFiles(cloudConfigBytes, scriptBytes []byte, metadata datasource.Metadata) error {
@@ -319,17 +323,17 @@ func selectDatasource(sources []datasource.Datasource, onlineSource bool) (strin
 
 			duration := datasourceInterval
 			for {
-				log.Infof("cloud-init: Checking availability of %q", s.Type())
+				log.Infof("Checking availability of datasource %q", s.Type())
 				if s.IsAvailable() {
-					log.Infof("cloud-init: Datasource available: %s", s)
+					log.Infof("Datasource available: %s", s)
 					ds <- s
 					return
 				}
 				if !s.AvailabilityChanges() {
-					log.Infof("cloud-init: Datasource unavailable, skipping: %s", s)
+					log.Infof("Datasource unavailable, skipping: %s", s)
 					return
 				}
-				log.Errorf("cloud-init: Datasource not ready, will retry: %s", s)
+				log.Errorf("Datasource not ready, will retry: %s", s)
 				select {
 				case <-stop:
 					return
@@ -388,4 +392,12 @@ func decompressIfGzip(userdataBytes []byte) ([]byte, error) {
 	}
 
 	return config.DecompressGzip(userdataBytes)
+}
+
+func containsOfflineOnlineSources(sources []datasource.Datasource) (offline bool, online bool) {
+	for _, s := range sources {
+		online = s.RequiresNetwork() == true || online
+		offline = s.RequiresNetwork() == false || offline
+	}
+	return
 }
