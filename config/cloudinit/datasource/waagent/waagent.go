@@ -37,6 +37,10 @@ func NewDatasource(root string) *Waagent {
 	return &Waagent{root, ioutil.ReadFile, nil}
 }
 
+func (a *Waagent) RequiresNetwork() bool {
+	return false
+}
+
 func (a *Waagent) IsAvailable() bool {
 	_, a.lastError = os.Stat(path.Join(a.root, "provisioned"))
 	return !os.IsNotExist(a.lastError)

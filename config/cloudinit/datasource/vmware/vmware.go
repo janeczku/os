@@ -41,7 +41,7 @@ const (
 	hostname guestInfoParam = iota
 	configData
 	configDataEnc
-	configUrl
+	configURL
 	ifaceName
 	ifaceMac
 	ifaceDhcp
@@ -57,7 +57,7 @@ var guestInfoParamsKeys = map[guestInfoParam]string{
 	hostname:			"hostname",
 	configData:			"cloud-init.config.data",
 	configDataEnc:		"cloud-init.data.encoding",
-	configUrl:			"cloud-init.config.url",
+	configURL:			"cloud-init.config.url",
 	ifaceName:			"interface.%d.name",
 	ifaceMac:			"interface.%d.mac",
 	ifaceDhcp:			"interface.%d.dhcp",
@@ -75,6 +75,10 @@ func (v VMWare) Finish() error {
 
 func (v VMWare) String() string {
 	return fmt.Sprintf("%s: %s (lastError: %s)", v.Type(), v.ovfFileName, v.lastError)
+}
+
+func (v VMWare) RequiresNetwork() bool {
+	return false
 }
 
 func (v VMWare) AvailabilityChanges() bool {
@@ -213,7 +217,7 @@ func (v VMWare) FetchUserdata() ([]byte, error) {
 
 	// Try to fallback to url if no explicit data
 	if data == "" {
-		url, err := v.read(configUrl)
+		url, err := v.read(configURL)
 		if err != nil {
 			return nil, err
 		}

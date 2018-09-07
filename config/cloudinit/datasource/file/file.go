@@ -31,6 +31,10 @@ func NewDatasource(path string) *LocalFile {
 	return &LocalFile{path, nil}
 }
 
+func (f *LocalFile) RequiresNetwork() bool {
+	return false
+}
+
 func (f *LocalFile) IsAvailable() bool {
 	_, f.lastError = os.Stat(f.path)
 	return !os.IsNotExist(f.lastError)
