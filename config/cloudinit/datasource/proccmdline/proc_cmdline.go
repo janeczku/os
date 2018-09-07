@@ -41,7 +41,7 @@ func NewDatasource() *ProcCmdline {
 }
 
 func (c *ProcCmdline) RequiresNetwork() bool {
-	return false
+	return true
 }
 
 func (c *ProcCmdline) IsAvailable() bool {
