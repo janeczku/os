@@ -21,6 +21,7 @@ import (
 )
 
 type Datasource interface {
+	RequiresNetwork() bool
 	IsAvailable() bool
 	AvailabilityChanges() bool
 	ConfigRoot() string

@@ -40,6 +40,10 @@ func NewDatasource() *ProcCmdline {
 	return &ProcCmdline{Location: ProcCmdlineLocation}
 }
 
+func (c *ProcCmdline) RequiresNetwork() bool {
+	return false
+}
+
 func (c *ProcCmdline) IsAvailable() bool {
 	var contents []byte
 	contents, c.lastError = ioutil.ReadFile(c.Location)
