@@ -15,17 +15,18 @@
 package vmware
 
 import (
-	"io/ioutil"
-	"os"
-
+	"fmt"
 	"github.com/rancher/os/log"
 	"github.com/rancher/os/util"
+	"io/ioutil"
+	"os"
+	"strings"
 
 	"github.com/rancher/os/config/cloudinit/pkg"
 
 	"github.com/sigma/vmw-guestinfo/rpcvmx"
 	"github.com/sigma/vmw-guestinfo/vmcheck"
-	ovf "github.com/sigma/vmw-ovflib"
+	"github.com/sigma/vmw-ovflib"
 )
 
 type ovfWrapper struct {
@@ -51,6 +52,7 @@ func NewDatasource(fileName string) *VMWare {
 			ovfFileName: fileName,
 			readConfig:  getOvfReadConfig(ovfEnv),
 			urlDownload: urlDownload,
+			lastError:   nil,
 		}
 	}
 
@@ -76,11 +78,50 @@ func (v VMWare) IsAvailable() bool {
 	if util.GetHypervisor() != "vmware" {
 		return false
 	}
+
 	if v.ovfFileName != "" {
 		_, v.lastError = os.Stat(v.ovfFileName)
 		return !os.IsNotExist(v.lastError)
 	}
-	return vmcheck.IsVirtualWorld()
+
+	// check if VMware backdoor is present.
+	if !vmcheck.IsVirtualWorld() {
+		v.lastError = fmt.Errorf("vmware backdoor not available")
+		return false
+	}
+
+	found := v.isSet()
+	if !found {
+		v.lastError = fmt.Errorf("no guestinfo parameters specified")
+	}
+
+	return found
+}
+
+// We must only mark the datasource as available if at least one of the
+// well-known cloud-init parameters in the guestinfo namespace are present.
+// Otherwise the vmware datasource would always be selected over any other
+// datasource even when empty.
+func (v VMWare) isSet() bool {
+	for param, format := range guestInfoParamsKeys {
+		index := strings.Count(format, "%d")
+		switch index {
+		case 1:
+			if res, _ := v.read(param, 0); res != "" {
+				return true
+			}
+		case 2:
+			if res, _ := v.read(param, 0, 0); res != "" {
+				return true
+			}
+		default:
+			if res, _ := v.read(param); res != "" {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func readConfig(key string) (string, error) {
