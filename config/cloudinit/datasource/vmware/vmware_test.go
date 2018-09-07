@@ -373,3 +373,50 @@ func TestOvfTransport(t *testing.T) {
 	}
 
 }
+
+func TestIsAnyParamSet(t *testing.T) {
+	tests := []struct {
+		variables MockHypervisor
+		available bool
+	}{
+		{},
+		{
+			variables: map[string]string{
+				"cloud-init.config.data": "test config",
+		},
+			available:  true,
+		},
+		{
+			variables: map[string]string{
+				"hostname":	"test host",
+			},
+			available:  true,
+		},
+		{
+			variables: map[string]string{
+				"interface.0.ip.0.address":	"10.0.0.100/24",
+			},
+			available:  true,
+		},
+		{
+			variables: map[string]string{},
+			available:  false,
+		},
+		{
+			variables: map[string]string{
+				"foo.bar":	"baz",
+			},
+			available:  false,
+		},
+	}
+
+	for i, tt := range tests {
+		v := VMWare{
+			readConfig:  tt.variables.ReadConfig,
+		}
+		available := v.isAnyParamSet()
+		if tt.available != available {
+			t.Errorf("bad available (#%d): want %v, got %v", i, tt.available, available)
+		}
+	}
+}

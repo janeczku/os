@@ -80,7 +80,32 @@ func (v VMWare) IsAvailable() bool {
 		_, v.lastError = os.Stat(v.ovfFileName)
 		return !os.IsNotExist(v.lastError)
 	}
-	return vmcheck.IsVirtualWorld()
+
+	// check if guestinfo backdoor is present
+	if ! vmcheck.IsVirtualWorld() {
+		return false
+	}
+
+	return v.isAnyParamSet()
+}
+
+// in case of backdoor and ovf environemnt, we must only
+// mark this datasource as available if at least one of the
+// well-known cloud-init parameters is set.
+// otherwise the vmware datasource would always be selected
+// downstream even when no configuration was provided.
+func (v VMWare) isAnyParamSet() bool {
+	for param := range staticParams {
+		if res, _ := v.read(param); res != "" {
+			return true
+		}
+	}
+	for param := range indexedParams {
+		if res, _ := v.read(param, 0); res != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func readConfig(key string) (string, error) {
