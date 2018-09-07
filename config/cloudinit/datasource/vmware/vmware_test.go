@@ -32,7 +32,10 @@ type MockHypervisor map[string]string
 
 func (h MockHypervisor) ReadConfig(key string) (string, error) {
 	fmt.Printf("read(%s) %s\n", key, h[key])
-	return h[key], nil
+	if val, ok := h[key]; ok {
+		return val, nil
+	}
+	return "", nil
 }
 
 var fakeDownloader urlDownloadFunction = func(url string) ([]byte, error) {
@@ -372,4 +375,106 @@ func TestOvfTransport(t *testing.T) {
 		}
 	}
 
+}
+
+func TestIsSet(t *testing.T) {
+	tests := []struct {
+		variables MockHypervisor
+		available bool
+	}{
+		{
+			variables: map[string]string{
+				"cloud-init.config.data": "test config",
+			},
+			available:  true,
+		},
+		{
+			variables: map[string]string{
+				"hostname":	"test host",
+			},
+			available:  true,
+		},
+		{
+			variables: map[string]string{
+				"interface.0.ip.0.address":	"10.0.0.100/24",
+			},
+			available:  true,
+		},
+		{
+			variables: map[string]string{},
+			available:  false,
+		},
+		{
+			variables: map[string]string{
+				"foo.bar":	"baz",
+			},
+			available:  false,
+		},
+	}
+
+	for i, tt := range tests {
+		v := VMWare{
+			readConfig:  tt.variables.ReadConfig,
+		}
+		available := v.isSet()
+		if tt.available != available {
+			t.Errorf("bad available (#%d): want %v, got %v", i, tt.available, available)
+		}
+	}
+}
+
+func TestRead(t *testing.T) {
+	var mock MockHypervisor = map[string]string{
+		"hostname":                        "test host",
+		"interface.0.mac":                 "test mac",
+		"interface.0.dhcp":                "false",
+		"interface.0.ip.0.address":        "10.0.0.100/24",
+	}
+
+	tests := []struct {
+		param 		guestInfoParam
+		indexes 	[]int
+		expected	string
+	}{
+		{
+			param: hostname,
+			indexes:[]int{},
+			expected: mock["hostname"],
+		},
+		{
+			param: ifaceMac,
+			indexes:[]int{0},
+			expected: mock["interface.0.mac"],
+		},
+		{
+			param: ifaceDhcp,
+			indexes:[]int{0},
+			expected: mock["interface.0.dhcp"],
+		},
+		{
+			param: ifaceAddress,
+			indexes:[]int{0, 0},
+			expected: mock["interface.0.ip.0.address"],
+		},
+		{
+			param: ifaceRouteGateway,
+			indexes:[]int{0, 0},
+			expected: "",
+		},
+	}
+
+	for i, tt := range tests {
+		v := VMWare{
+			readConfig:  mock.ReadConfig,
+		}
+		ret, err :=  v.read(tt.param, tt.indexes...)
+
+		if err != nil {
+			t.Errorf("bad error (#%d): want %v, got %v", i, nil, err)
+		}
+
+		if tt.expected != ret {
+			t.Errorf("bad return value (#%d): want %v, got %v", i, tt.expected, ret)
+		}
+	}
 }
