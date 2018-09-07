@@ -49,6 +49,10 @@ func NewDatasourceWithCheckPath(root, apiVersion, isAvailableCheckPath, userdata
 	return Service{root, pkg.NewHTTPClientHeader(header), apiVersion, isAvailableCheckPath, userdataPath, metadataPath, nil}
 }
 
+func (ms Service) RequiresNetwork() bool {
+	return true
+}
+
 func (ms Service) IsAvailable() bool {
 	checkURL := ms.Root + ms.IsAvailableCheckPath
 	_, ms.lastError = ms.Client.Get(checkURL)

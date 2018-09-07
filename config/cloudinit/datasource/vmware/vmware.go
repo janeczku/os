@@ -43,6 +43,10 @@ func (v VMWare) String() string {
 	return fmt.Sprintf("%s: %s (lastError: %v)", v.Type(), v.ovfFileName, v.lastError)
 }
 
+func (v VMWare) RequiresNetwork() bool {
+	return false
+}
+
 func (v VMWare) AvailabilityChanges() bool {
 	return false
 }

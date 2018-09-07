@@ -18,6 +18,7 @@ package cloudinitsave
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -65,48 +66,50 @@ func Main() {
 	if err := saveCloudConfig(); err != nil {
 		log.Errorf("Failed to save cloud-config: %v", err)
 	}
+
+	// If an offline datasource or no datasource was used this will be the
+	// first time we apply the network config. Otherwise this will update
+	// the network with any new configuration from an online datasource.
+	cfg := rancherConfig.LoadConfig()
+	log.Debugf("Network config (post save-cc): %#v", cfg.Rancher.Network)
+	network.ApplyNetworkConfig(cfg)
 }
 
 func saveCloudConfig() error {
-	log.Infof("SaveCloudConfig")
-
 	cfg := rancherConfig.LoadConfig()
-	log.Debugf("init: SaveCloudConfig(pre ApplyNetworkConfig): %#v", cfg.Rancher.Network)
-	network.ApplyNetworkConfig(cfg)
+	log.Debugf("Network config (pre save-cc-offline): %#v", cfg.Rancher.Network)
 
-	log.Infof("datasources that will be consided: %#v", cfg.Rancher.CloudInit.Datasources)
-	dss := getDatasources(cfg.Rancher.CloudInit.Datasources)
-	if len(dss) == 0 {
-		log.Errorf("currentDatasource - none found")
+	if len(cfg.Rancher.CloudInit.Datasources) == 0 {
+		log.Info("No datasources configured")
 		return nil
 	}
 
-	foundDs := selectDatasource(dss)
-	log.Infof("Cloud-init datasource that was used: %s", foundDs)
+	log.Infof("Datasources that will be considered: %#v", cfg.Rancher.CloudInit.Datasources)
+	dss := getDatasources(cfg.Rancher.CloudInit.Datasources)
+	if len(dss) == 0 {
+		return fmt.Errorf("Failed to initialize datasource(s): %#v", cfg.Rancher.CloudInit.Datasources)
+	}
 
-	// Apply any newly detected network config.
+	// Offline datasources
+	log.Debug("Considering offline datasources")
+	if foundDs, ok := selectDatasource(dss, false); ok {
+		log.Infof("Used offline datasource: %s", foundDs)
+		return nil
+	}
+
+	// Apply initial network config for datasources that require the net
 	cfg = rancherConfig.LoadConfig()
-	log.Debugf("init: SaveCloudConfig(post ApplyNetworkConfig): %#v", cfg.Rancher.Network)
+	log.Debugf("Network config (pre save-cc-online): %#v", cfg.Rancher.Network)
 	network.ApplyNetworkConfig(cfg)
 
-	return nil
-}
+	// Online datasources
+	log.Debug("Considering online datasources")
+	if foundDs, ok := selectDatasource(dss, true); ok {
+		log.Infof("Used online datasource: %s", foundDs)
+		return nil
+	}
 
-func RequiresNetwork(datasource string) bool {
-	// TODO: move into the datasources (and metadatasources)
-	// and then we can enable that platforms defaults..
-	parts := strings.SplitN(datasource, ":", 2)
-	requiresNetwork, ok := map[string]bool{
-		"ec2":          true,
-		"file":         false,
-		"url":          true,
-		"cmdline":      true,
-		"configdrive":  false,
-		"digitalocean": true,
-		"gce":          true,
-		"packet":       true,
-	}[parts[0]]
-	return ok && requiresNetwork
+	return fmt.Errorf("Failed to fetch any of the datasource(s): %#v", cfg.Rancher.CloudInit.Datasources)
 }
 
 func saveFiles(cloudConfigBytes, scriptBytes []byte, metadata datasource.Metadata) error {
@@ -301,12 +304,15 @@ func enableDoLinkLocal() {
 // returned. Datasources will be retried if possible if they are not
 // immediately available. If all Datasources are permanently unavailable or
 // datasourceTimeout is reached before one becomes available, nil is returned.
-func selectDatasource(sources []datasource.Datasource) datasource.Datasource {
+func selectDatasource(sources []datasource.Datasource, onlineSource bool) (string, bool) {
 	ds := make(chan datasource.Datasource)
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 
 	for _, s := range sources {
+		if s.RequiresNetwork() != onlineSource {
+			continue
+		}
 		wg.Add(1)
 		go func(s datasource.Datasource) {
 			defer wg.Done()
@@ -341,18 +347,19 @@ func selectDatasource(sources []datasource.Datasource) datasource.Datasource {
 	}()
 
 	var s datasource.Datasource
+	var name string
 	select {
 	case s = <-ds:
-		err := fetchAndSave(s)
-		if err != nil {
-			log.Errorf("Error fetching cloud-init datasource(%s): %s", s, err)
+		name = s.String()
+		if err := fetchAndSave(s); err != nil {
+			log.Errorf("error fetching cloud-init datasource (%s): %s", s, err)
 		}
 	case <-done:
 	case <-time.After(datasourceTimeout):
 	}
 
 	close(stop)
-	return s
+	return name, name != ""
 }
 
 func isCompose(content string) bool {
