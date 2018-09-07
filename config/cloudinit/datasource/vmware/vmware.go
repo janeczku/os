@@ -35,6 +35,40 @@ type VMWare struct {
 	lastError   error
 }
 
+type guestInfoParam int
+
+const (
+	hostname guestInfoParam = iota
+	configData
+	configDataEnc
+	configUrl
+	ifaceName
+	ifaceMac
+	ifaceDhcp
+	ifaceRole
+	ifaceAddress
+	ifaceRouteGateway
+	ifaceRouteDest
+	dnsServer
+	dnsDomain
+)
+
+var guestInfoParamsKeys = map[guestInfoParam]string{
+	hostname:			"hostname",
+	configData:			"cloud-init.config.data",
+	configDataEnc:		"cloud-init.data.encoding",
+	configUrl:			"cloud-init.config.url",
+	ifaceName:			"interface.%d.name",
+	ifaceMac:			"interface.%d.mac",
+	ifaceDhcp:			"interface.%d.dhcp",
+	ifaceRole:			"interface.%d.role",
+	ifaceAddress:		"interface.%d.ip.%d.address",
+	ifaceRouteGateway:	"interface.%d.route.%d.gateway",
+	ifaceRouteDest:		"interface.%d.route.%d.destination",
+	dnsServer:			"dns.server.%d",
+	dnsDomain:			"dns.domain.%d",
+}
+
 func (v VMWare) Finish() error {
 	return nil
 }
@@ -51,14 +85,9 @@ func (v VMWare) ConfigRoot() string {
 	return "/"
 }
 
-func (v VMWare) read(keytmpl string, args ...interface{}) (string, error) {
-	key := fmt.Sprintf(keytmpl, args...)
-	return v.readConfig(key)
-}
-
 func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 	metadata.NetworkConfig = netconf.NetworkConfig{}
-	metadata.Hostname, _ = v.readConfig("hostname")
+	metadata.Hostname, _ = v.read(hostname)
 
 	//netconf := map[string]string{}
 	//saveConfig := func(key string, args ...interface{}) string {
@@ -71,7 +100,7 @@ func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 	//}
 
 	for i := 0; ; i++ {
-		val, _ := v.read("dns.server.%d", i)
+		val, _ := v.read(dnsServer, i)
 		if val == "" {
 			break
 		}
@@ -80,7 +109,7 @@ func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 
 	for i := 0; ; i++ {
 		//if domain := saveConfig("dns.domain.%d", i); domain == "" {
-		val, _ := v.read("dns.domain.%d", i)
+		val, _ := v.read(dnsDomain, i)
 		if val == "" {
 			break
 		}
@@ -99,24 +128,24 @@ func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 			Addresses: []string{},
 		}
 		//found = (saveConfig("interface.%d.name", i) != "") || found
-		if val, _ := v.read("interface.%d.name", i); val != "" {
+		if val, _ := v.read(ifaceName, i); val != "" {
 			netDevice.Match = val
 			found = true
 		}
 		//found = (saveConfig("interface.%d.mac", i) != "") || found
-		if val, _ := v.read("interface.%d.mac", i); val != "" {
+		if val, _ := v.read(ifaceMac, i); val != "" {
 			netDevice.Match = "mac:" + val
 			found = true
 		}
 		//found = (saveConfig("interface.%d.dhcp", i) != "") || found
-		if val, _ := v.read("interface.%d.dhcp", i); val != "" {
+		if val, _ := v.read(ifaceDhcp, i); val != "" {
 			netDevice.DHCP = (strings.ToLower(val) != "no")
 			found = true
 		}
 
-		role, _ := v.read("interface.%d.role", i)
+		role, _ := v.read(ifaceRole, i)
 		for a := 0; ; a++ {
-			address, _ := v.read("interface.%d.ip.%d.address", i, a)
+			address, _ := v.read(ifaceAddress, i, a)
 			if address == "" {
 				break
 			}
@@ -151,9 +180,9 @@ func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 		}
 
 		for r := 0; ; r++ {
-			gateway, _ := v.read("interface.%d.route.%d.gateway", i, r)
+			gateway, _ := v.read(ifaceRouteGateway, i, r)
 			// TODO: do we really not do anything but default routing?
-			//destination, _ := v.read("interface.%d.route.%d.destination", i, r)
+			// destination, _ := v.read(ifaceRouteDest, i, r)
 			destination := ""
 
 			if gateway == "" && destination == "" {
@@ -172,19 +201,19 @@ func (v VMWare) FetchMetadata() (metadata datasource.Metadata, err error) {
 }
 
 func (v VMWare) FetchUserdata() ([]byte, error) {
-	encoding, err := v.readConfig("cloud-init.data.encoding")
+	encoding, err := v.read(configDataEnc)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := v.readConfig("cloud-init.config.data")
+	data, err := v.read(configData)
 	if err != nil {
 		return nil, err
 	}
 
 	// Try to fallback to url if no explicit data
 	if data == "" {
-		url, err := v.readConfig("cloud-init.config.url")
+		url, err := v.read(configUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -206,4 +235,24 @@ func (v VMWare) FetchUserdata() ([]byte, error) {
 
 func (v VMWare) Type() string {
 	return "VMWare"
+}
+
+func (v VMWare) read(param guestInfoParam, index ...int) (string, error) {
+	if key, ok := guestInfoParamsKeys[param]; ok {
+		numIndex := strings.Count(key, "%d")
+		if len(index) != numIndex {
+			return "", fmt.Errorf("incorrect number of indexes for %s", key)
+		}
+		if len(index) > 0 {
+			format := make([]interface{}, len(index))
+			for i, v := range index {
+				format[i] = v
+			}
+			key = fmt.Sprintf(key, format...)
+		}
+
+		return v.readConfig(key)
+	}
+
+	return "", fmt.Errorf("unknown guestInfoParam")
 }
