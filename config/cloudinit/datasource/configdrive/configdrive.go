@@ -47,6 +47,10 @@ func NewDatasource(root string) *ConfigDrive {
 	return &ConfigDrive{root, ioutil.ReadFile, nil, true}
 }
 
+func (cd *ConfigDrive) RequiresNetwork() bool {
+	return false
+}
+
 func (cd *ConfigDrive) IsAvailable() bool {
 	if cd.root == configDevMountPoint {
 		cd.lastError = MountConfigDrive()
