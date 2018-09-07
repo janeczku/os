@@ -441,22 +441,22 @@ func TestRead(t *testing.T) {
 		{
 			param: hostname,
 			indexes:[]int{},
-			expected: mock["hostname"],
+			expected: "test host",
 		},
 		{
 			param: ifaceMac,
 			indexes:[]int{0},
-			expected: mock["interface.0.mac"],
+			expected: "test mac",
 		},
 		{
 			param: ifaceDhcp,
 			indexes:[]int{0},
-			expected: mock["interface.0.dhcp"],
+			expected: "false",
 		},
 		{
 			param: ifaceAddress,
 			indexes:[]int{0, 0},
-			expected: mock["interface.0.ip.0.address"],
+			expected: "10.0.0.100/24",
 		},
 		{
 			param: ifaceRouteGateway,
